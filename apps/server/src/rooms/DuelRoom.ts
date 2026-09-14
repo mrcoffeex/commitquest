@@ -12,6 +12,7 @@ import {
 } from "@commitquest/shared";
 import { DuelFighter, DuelState } from "../schema/DuelState.js";
 import { loadCharacter, reportDuel } from "../api.js";
+import { authenticateJoin } from "../auth.js";
 
 type Input = { up?: boolean; down?: boolean; left?: boolean; right?: boolean };
 
@@ -44,11 +45,16 @@ export class DuelRoom extends Room<DuelState> {
     this.fillTimer = this.clock.setTimeout(() => this.fillBots(), this.state.mode === "solo" ? 400 : 8000);
   }
 
+  async onAuth(_client: Client, options: { token?: string; characterId?: string }) {
+    return authenticateJoin(options);
+  }
+
   async onJoin(client: Client, options: { characterId?: string; spectate?: boolean; mode?: MatchMode }) {
     if (options?.mode) this.state.mode = options.mode;
     const unit = new DuelFighter();
     unit.sessionId = client.sessionId;
-    unit.characterId = String(options?.characterId ?? "");
+    const session = client.auth as { character?: { id?: string } } | undefined;
+    unit.characterId = String(session?.character?.id ?? options?.characterId ?? "");
     unit.spectator = Boolean(options?.spectate);
     unit.name = unit.spectator ? "spectator" : "fighter";
     unit.side = this.nextSide(unit.spectator);

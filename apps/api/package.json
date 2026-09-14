@@ -10,6 +10,7 @@
     "migrate:dev": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; [ -f .env ] && . .env; set +a; prisma migrate dev'",
     "reset": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; [ -f .env ] && . .env; set +a; prisma migrate reset --force'",
     "seed": "sh -c 'set -a; [ -f ../../.env ] && . ../../.env; [ -f .env ] && . .env; set +a; tsx prisma/seed.ts'",
+    "test": "tsx --test src/github.test.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

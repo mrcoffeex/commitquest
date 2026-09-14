@@ -1,6 +1,15 @@
 export type Me = {
-  user: { id: string; login: string; avatarUrl?: string };
+  user: {
+    id: string;
+    login: string;
+    githubId?: string;
+    githubLogin?: string;
+    name?: string;
+    email?: string;
+    avatarUrl?: string;
+  };
   character: CharacterView | null;
+  authMock?: boolean;
 };
 
 export type CharacterView = {
@@ -33,7 +42,7 @@ export function getToken(): string | null {
   const url = new URL(window.location.href);
   const fromUrl = url.searchParams.get("token");
   if (fromUrl) {
-    localStorage.setItem(TOKEN_KEY, fromUrl);
+    setToken(fromUrl);
     url.searchParams.delete("token");
     history.replaceState({}, "", url.pathname);
     return fromUrl;
@@ -43,12 +52,14 @@ export function getToken(): string | null {
 
 export function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
+  document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Max-Age=${7 * 24 * 60 * 60}`;
 }
 
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const res = await fetch(path, {
     ...init,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -61,7 +72,8 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  config: () => req<{ authMock: boolean; githubEnabled: boolean }>("/api/auth/config"),
+  config: () => req<{ authMock: boolean; githubEnabled: boolean; scopes: string }>("/api/auth/config"),
+  session: () => req<{ ok: boolean }>("/api/auth/session", { method: "POST" }),
   mock: (login: string) => req<{ token: string }>("/api/auth/mock", { method: "POST", body: JSON.stringify({ login }) }),
   me: () => req<Me>("/api/me"),
   patchCharacter: (body: object) => req<{ character: CharacterView }>("/api/character", { method: "PATCH", body: JSON.stringify(body) }),

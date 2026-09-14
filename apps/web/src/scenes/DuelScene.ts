@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { Client, type Room } from "colyseus.js";
 import { DUEL } from "@commitquest/shared";
+import { getToken } from "../api.js";
 import { refreshHud, setHp, setPrompt, toast } from "../hud.js";
 
 type DuelUnit = {
@@ -50,7 +51,12 @@ export class DuelScene extends Phaser.Scene {
     const characterId = this.registry.get("characterId") as string;
     const ws = import.meta.env.VITE_COLYSEUS_URL ?? "ws://localhost:2567";
     const client = new Client(ws);
-    this.room = await client.joinOrCreate("duel", { characterId, spectate: Boolean(data.spectate), mode: "solo" });
+    this.room = await client.joinOrCreate("duel", {
+      characterId,
+      token: getToken(),
+      spectate: Boolean(data.spectate),
+      mode: "solo",
+    });
     this.room.onMessage("fx", (msg: { x: number; y: number; text: string }) => {
       const label = this.add.text(msg.x, msg.y, msg.text, { fontSize: "14px", color: "#d6ff4a" }).setOrigin(0.5);
       this.tweens.add({ targets: label, y: msg.y - 24, alpha: 0, duration: 450, onComplete: () => label.destroy() });

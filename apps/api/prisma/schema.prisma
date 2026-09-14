@@ -10,7 +10,9 @@ datasource db {
 model User {
   id          String     @id @default(cuid())
   githubId    String     @unique
+  githubLogin String?
   login       String
+  name        String?
   email       String?
   avatarUrl   String?
   accessToken String?

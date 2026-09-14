@@ -16,6 +16,7 @@ import {
 } from "@commitquest/shared";
 import { WorldBoss, WorldPlayer, WorldState } from "../schema/WorldState.js";
 import { loadCharacter, reportBossHit, reportDeath, reportDuck } from "../api.js";
+import { authenticateJoin } from "../auth.js";
 
 type Input = { up?: boolean; down?: boolean; left?: boolean; right?: boolean };
 
@@ -70,10 +71,15 @@ export class WorldRoom extends Room<WorldState> {
     this.setSimulationInterval((dt) => this.tick(dt), 50);
   }
 
+  async onAuth(_client: Client, options: { token?: string; characterId?: string }) {
+    return authenticateJoin(options);
+  }
+
   async onJoin(client: Client, options: { characterId?: string }) {
     const player = new WorldPlayer();
     player.sessionId = client.sessionId;
-    player.characterId = String(options?.characterId ?? "");
+    const session = client.auth as { character?: { id?: string } } | undefined;
+    player.characterId = String(session?.character?.id ?? options?.characterId ?? "");
     player.name = "anon";
     player.x = LANDMARKS.spawn.x;
     player.y = LANDMARKS.spawn.y;

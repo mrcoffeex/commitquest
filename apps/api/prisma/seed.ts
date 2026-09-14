@@ -9,7 +9,9 @@ async function main() {
     update: {},
     create: {
       githubId: "mock:octocat",
+      githubLogin: "octocat",
       login: "octocat",
+      name: "The Octocat",
       avatarUrl: "https://github.com/octocat.png",
       character: {
         create: {

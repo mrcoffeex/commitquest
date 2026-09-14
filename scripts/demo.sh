@@ -4,8 +4,13 @@ set -euo pipefail
 API="${API_URL:-http://localhost:3001}"
 
 echo "== health =="
-curl -sS "$API/api/health"
-echo
+HEALTH=$(curl -sS "$API/api/health")
+echo "$HEALTH"
+echo "$HEALTH" | python3 -c 'import json,sys; cfg=json.load(sys.stdin); raise SystemExit(0 if cfg.get("authMock") else 1)' || {
+  echo "AUTH_MOCK is false. The demo uses mock login + simulate (dev-only)."
+  echo "Set AUTH_MOCK=true in .env, restart the API, and re-run npm run demo."
+  exit 1
+}
 
 echo "== mock auth =="
 TOKEN=$(curl -sS -X POST "$API/api/auth/mock" -H 'content-type: application/json' -d '{"login":"octocat"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
