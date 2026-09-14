@@ -1,7 +1,8 @@
 import Phaser from "phaser";
-import { Client, type Room } from "colyseus.js";
-import { LANDMARKS, TILE, WORLD, buildWorldGrid } from "@commitquest/shared";
+import { getStateCallbacks, type Room } from "colyseus.js";
+import { LANDMARKS, TILE, WORLD, blocked, buildWorldGrid, moveSpeed, emptyStats } from "@commitquest/shared";
 import { currentCharacter, refreshHud, setHp, setPrompt, toast } from "../hud.js";
+import { gameClient } from "../net.js";
 
 type WorldMsg = { kind?: string; x?: number; y?: number; text?: string; line?: string };
 
@@ -11,6 +12,8 @@ export class OverworldScene extends Phaser.Scene {
   cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   wasd!: Record<"W" | "A" | "S" | "D", Phaser.Input.Keyboard.Key>;
   lastSent = "";
+  grid = buildWorldGrid();
+  localHero?: Phaser.GameObjects.Container;
 
   constructor() {
     super("overworld");
@@ -20,6 +23,11 @@ export class OverworldScene extends Phaser.Scene {
     this.drawMap();
     this.drawRain();
     this.placeProps();
+    this.input.keyboard?.on("keydown-SPACE", () => {
+      if (!this.room && this.localHero) {
+        this.floatText(this.localHero.x, this.localHero.y - 10, "HIT");
+      }
+    });
     this.cameras.main.setBounds(0, 0, WORLD.width, WORLD.height);
     this.cameras.main.setZoom(1.15);
 
@@ -33,16 +41,28 @@ export class OverworldScene extends Phaser.Scene {
     keys.on("keydown-THREE", () => this.room?.send("emote", { text: "404" }));
     this.input.on("pointerdown", () => this.room?.send("attack"));
 
+    this.spawnLocalHero();
     const characterId = this.registry.get("characterId") as string;
-    const ws = import.meta.env.VITE_COLYSEUS_URL ?? "ws://localhost:2567";
     try {
-      const client = new Client(ws);
+      const client = gameClient();
       this.room = await client.joinOrCreate("world", { characterId });
-      this.room.state.players.onAdd((player: WorldPlayer, id: string) => this.upsert(id, player, true));
-      this.room.state.players.onRemove((_p: WorldPlayer, id: string) => {
-        this.sprites.get(id)?.destroy();
-        this.sprites.delete(id);
-      });
+      try {
+        const $ = getStateCallbacks(this.room);
+        $(this.room.state).players.onAdd((player: WorldPlayer, id: string) => {
+          this.upsert(id, player, id === this.room?.sessionId);
+          $(player).onChange(() => this.upsert(id, player, false));
+        });
+        $(this.room.state).players.onRemove((_p: WorldPlayer, id: string) => {
+          this.sprites.get(id)?.destroy();
+          this.sprites.delete(id);
+        });
+        $(this.room.state).bosses.onAdd((boss: WorldBoss) => {
+          this.drawBoss(boss);
+          $(boss).onChange(() => this.drawBoss(boss));
+        });
+      } catch (callbackError) {
+        console.warn("state callbacks", callbackError);
+      }
       this.room.onMessage("fx", (msg: WorldMsg) => this.floatText(msg.x ?? 0, msg.y ?? 0, msg.text ?? "hit"));
       this.room.onMessage("duck", (msg: WorldMsg) => {
         setPrompt(msg.line ?? "");
@@ -50,15 +70,25 @@ export class OverworldScene extends Phaser.Scene {
         refreshHud().catch(() => undefined);
       });
       this.events.on("duel", (opts: { spectate?: boolean }) => this.enterDuel(opts.spectate));
+      setPrompt("Connected to the overworld.");
     } catch (error) {
-      setPrompt("Overworld server offline — HUD still works.");
+      setPrompt("Playing locally — Colyseus not reached. WASD still works.");
       toast(error instanceof Error ? error.message : "Colyseus offline");
     }
   }
 
   tryInteract() {
-    const me = this.mySprite();
-    if (!me || !this.room) return;
+    const me = this.mySprite() ?? this.localHero;
+    if (!me) return;
+    if (!this.room) {
+      if (Phaser.Math.Distance.Between(me.x, me.y, LANDMARKS.duck.x, LANDMARKS.duck.y) < 70) {
+        setPrompt("Quack. (offline) Try the duck again when Colyseus is up.");
+      }
+      if (Phaser.Math.Distance.Between(me.x, me.y, LANDMARKS.duel.x, LANDMARKS.duel.y) < 70) {
+        this.enterDuel(false);
+      }
+      return;
+    }
     const d = Phaser.Math.Distance.Between(me.x, me.y, LANDMARKS.duck.x, LANDMARKS.duck.y);
     if (d < 70) {
       this.room.send("talk");
@@ -78,7 +108,17 @@ export class OverworldScene extends Phaser.Scene {
     this.scene.start("duel", { spectate });
   }
 
-  update() {
+  spawnLocalHero() {
+    const me = currentCharacter();
+    const color = Phaser.Display.Color.HexStringToColor(me?.color || "#33ff88").color;
+    const body = this.add.image(0, 0, "hero").setTint(color);
+    const label = this.add.text(0, -28, me?.displayName ?? "you", { fontSize: "11px", color: "#9affc4" }).setOrigin(0.5);
+    this.localHero = this.add.container(LANDMARKS.spawn.x, LANDMARKS.spawn.y, [body, label]);
+    this.cameras.main.startFollow(this.localHero, true, 0.12, 0.12);
+    setHp(55, 55);
+  }
+
+  update(_t: number, dt: number) {
     const input = {
       up: this.cursors.up.isDown || this.wasd.W.isDown,
       down: this.cursors.down.isDown || this.wasd.S.isDown,
@@ -90,22 +130,47 @@ export class OverworldScene extends Phaser.Scene {
       this.lastSent = packed;
       this.room?.send("input", input);
     }
-    if (!this.room) return;
-    this.room.state.players.forEach((player: WorldPlayer, id: string) => this.upsert(id, player, false));
-    this.room.state.bosses.forEach((boss: WorldBoss) => this.drawBoss(boss));
-    const mine = this.room.sessionId ? this.room.state.players.get(this.room.sessionId) : undefined;
+
+    const mine = this.room?.sessionId ? this.room.state.players?.get?.(this.room.sessionId) : undefined;
+    if (mine && this.localHero) {
+      this.localHero.setVisible(false);
+    } else if (this.localHero) {
+      this.stepLocal(input, dt);
+    }
+
     if (mine) {
       setHp(mine.hp, mine.maxHp);
-      const nearDuck = Phaser.Math.Distance.Between(mine.x, mine.y, LANDMARKS.duck.x, LANDMARKS.duck.y) < 70;
-      const nearDuel = Phaser.Math.Distance.Between(mine.x, mine.y, LANDMARKS.duel.x, LANDMARKS.duel.y) < 70;
-      const nearDaily = Phaser.Math.Distance.Between(mine.x, mine.y, LANDMARKS.daily.x, LANDMARKS.daily.y) < 90;
-      const nearWeekly = Phaser.Math.Distance.Between(mine.x, mine.y, LANDMARKS.weekly.x, LANDMARKS.weekly.y) < 90;
-      if (nearDuck) setPrompt("E: talk to the Rubber Duck");
-      else if (nearDuel) setPrompt("E or Q: enter a solo duel vs CompileBot");
-      else if (nearDaily) setPrompt("Daily boss: Null Pointer Phantom — Space to attack");
-      else if (nearWeekly) setPrompt("Weekly boss: The Great Merge Conflict");
-      else if (this.room.state.duckLine) setPrompt(this.room.state.duckLine);
+      this.hintAt(mine.x, mine.y);
+    } else if (this.localHero) {
+      this.hintAt(this.localHero.x, this.localHero.y);
     }
+  }
+
+  stepLocal(input: { up: boolean; down: boolean; left: boolean; right: boolean }, dt: number) {
+    if (!this.localHero) return;
+    let vx = 0;
+    let vy = 0;
+    if (input.up) vy -= 1;
+    if (input.down) vy += 1;
+    if (input.left) vx -= 1;
+    if (input.right) vx += 1;
+    const len = Math.hypot(vx, vy) || 1;
+    const speed = moveSpeed(emptyStats());
+    const nx = this.localHero.x + (vx / len) * speed * (dt / 1000);
+    const ny = this.localHero.y + (vy / len) * speed * (dt / 1000);
+    if (!blocked(this.grid, nx, this.localHero.y)) this.localHero.x = nx;
+    if (!blocked(this.grid, this.localHero.x, ny)) this.localHero.y = ny;
+  }
+
+  hintAt(x: number, y: number) {
+    const nearDuck = Phaser.Math.Distance.Between(x, y, LANDMARKS.duck.x, LANDMARKS.duck.y) < 70;
+    const nearDuel = Phaser.Math.Distance.Between(x, y, LANDMARKS.duel.x, LANDMARKS.duel.y) < 70;
+    const nearDaily = Phaser.Math.Distance.Between(x, y, LANDMARKS.daily.x, LANDMARKS.daily.y) < 90;
+    const nearWeekly = Phaser.Math.Distance.Between(x, y, LANDMARKS.weekly.x, LANDMARKS.weekly.y) < 90;
+    if (nearDuck) setPrompt("E: talk to the Rubber Duck");
+    else if (nearDuel) setPrompt("E or Q: enter a solo duel vs CompileBot");
+    else if (nearDaily) setPrompt("Daily boss: Null Pointer Phantom — Space to attack");
+    else if (nearWeekly) setPrompt("Weekly boss: The Great Merge Conflict");
   }
 
   upsert(id: string, player: WorldPlayer, follow: boolean) {
@@ -130,19 +195,22 @@ export class OverworldScene extends Phaser.Scene {
   }
 
   drawBoss(boss: WorldBoss) {
+    if (!boss?.id || !this.sys.isActive()) return;
     const key = `boss-${boss.id}`;
     let sprite = this.sprites.get(key);
     if (!sprite) {
       const img = this.add.image(0, 0, boss.id.includes("merge") ? "conflict" : "boss");
-      const label = this.add.text(0, -30, boss.name, { fontSize: "11px", color: "#ffb3c1" }).setOrigin(0.5);
+      const label = this.add.text(0, -30, boss.name || "boss", { fontSize: "11px", color: "#ffb3c1" }).setOrigin(0.5);
       sprite = this.add.container(boss.x, boss.y, [img, label]);
       this.sprites.set(key, sprite);
     }
     sprite.x = boss.x;
     sprite.y = boss.y;
-    sprite.setVisible(boss.alive);
-    const label = sprite.getAt(1) as Phaser.GameObjects.Text;
-    label.setText(`${boss.name} ${boss.hp}/${boss.maxHp}`);
+    sprite.setVisible(boss.alive !== false);
+    const label = sprite.getAt(1);
+    if (label && "setText" in label) {
+      (label as Phaser.GameObjects.Text).setText(`${boss.name} ${boss.hp}/${boss.maxHp}`);
+    }
   }
 
   drawMap() {

@@ -69,6 +69,8 @@ npm run test                # XP / death / level / commit / combat math
 npm run dev                 # API :3001, Colyseus :2567, Vite :5173
 ```
 
+The Vite dev server proxies `/api` → `:3001` and `/colyseus` → Colyseus `:2567`, so the browser only needs port 5173.
+
 Open [http://localhost:5173](http://localhost:5173), click **Play with mock auth**, then:
 
 1. WASD around the plaza. `Space` / click attacks the training dummy or a boss.
