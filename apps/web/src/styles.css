@@ -23,6 +23,27 @@ button {
 }
 button:hover { background: #0a3a22; }
 .ghost { display: inline-block; margin-top: 0.6rem; color: var(--amber); }
+.cta {
+  display: inline-block;
+  margin-top: 0.4rem;
+  padding: 0.7rem 1rem;
+  background: #062414;
+  color: var(--green);
+  border: 1px solid var(--green);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+.cta:hover { background: #0a3a22; }
+.cta.disabled { opacity: 0.45; cursor: not-allowed; }
+.linkish {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0;
+  text-decoration: underline;
+  font-size: 0.8rem;
+}
+.dev-login-wrap { margin: 0.8rem 0 0; }
 .hidden, [hidden] { display: none !important; }
 .muted { color: var(--muted); }
 .error { color: var(--danger); }

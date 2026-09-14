@@ -2,7 +2,7 @@
 
 A 2D browser MMO for developers. You walk a shared Matrix-green overworld, duel with WASD + hotkeys, and gain XP from real GitHub line diffs.
 
-This repo is a playable MVP: mock or GitHub login, character + ten stats (no classes), overworld combat, simulate-commit XP, daily/weekly quests, level curve with a random weapon every 10 levels, solo duel vs a bot, death XP penalty, match history, Bits shop, daily + weekly bosses, and a HUD.
+This repo is a playable MVP: **GitHub OAuth login** (mock auth only when `AUTH_MOCK=true`), character + ten stats (no classes), overworld combat, GitHub commit XP, daily/weekly quests, level curve with a random weapon every 10 levels, solo duel vs a bot, death XP penalty, match history, Bits shop, daily + weekly bosses, and a HUD.
 
 ## Stack
 
@@ -57,7 +57,8 @@ Needs Node 20+ and Postgres 16. Docker Compose is the intended database path; a 
 
 ```bash
 cp .env.example .env
-# AUTH_MOCK=true is the default — no GitHub app required
+# AUTH_MOCK=false — Sign in with GitHub is the default. Create an OAuth App first
+# (steps below). For a no-OAuth sandbox only, set AUTH_MOCK=true.
 
 docker compose up -d        # Postgres on :5432
 # or: use any Postgres and set DATABASE_URL
@@ -65,11 +66,11 @@ docker compose up -d        # Postgres on :5432
 npm install
 npm run db:migrate
 npm run db:seed
-npm run test                # XP / death / level / commit / combat math
+npm run test                # XP / death / level / commit / combat / OAuth helper math
 npm run dev                 # API :3001, Colyseus :2567, Vite :5173
 ```
 
-Open [http://localhost:5173](http://localhost:5173), click **Play with mock auth**, then:
+Open [http://localhost:5173](http://localhost:5173), click **Sign in with GitHub**, then:
 
 1. WASD around the plaza. `Space` / click attacks the training dummy or a boss.
 2. `E` at the yellow duck.
@@ -80,30 +81,95 @@ Open [http://localhost:5173](http://localhost:5173), click **Play with mock auth
 
 ### Simulate / bot demo without the browser
 
-With `npm run dev` already up:
+`npm run demo` uses mock login and the simulate-commit endpoint. Both are **dev-only** (`AUTH_MOCK=true`). With `npm run dev` already up:
 
 ```bash
+# in .env
+AUTH_MOCK=true
+# restart the API, then:
 npm run demo
 ```
 
-That mocks `octocat`, applies filtered commit XP, and prints `/me`, quests, and the leaderboard.
+That mocks `octocat`, applies filtered commit XP, and prints `/me`, quests, and the leaderboard. The HUD **Simulate commit** button is hidden unless mock auth is on.
 
-### GitHub OAuth + webhooks
+## GitHub OAuth (primary login)
 
-Set in `.env`:
+Players sign in with GitHub so the game can use their GitHub identity (`githubId`, `githubLogin`, name, email, avatar) and public commit activity for XP and quests.
+
+The browser hits `GET /api/auth/github` → GitHub → `GET /api/auth/github/callback` → JWT session cookie `cq_token` (also returned as `?token=` for the Vite origin). The same JWT is sent as `Authorization: Bearer` on API calls and as the Colyseus join `token`. The authorize `state` is HMAC-signed so CSRF checks still work when Vite proxies `/api` on `:5173` and GitHub returns to `:3001`.
+
+### 1. Create a GitHub OAuth App (local)
+
+Kent (or anyone running locally):
+
+1. Open [GitHub Developer settings → OAuth Apps](https://github.com/settings/developers) → **New OAuth App**.
+2. **Application name:** `CommitQuest (local)` (any name is fine).
+3. **Homepage URL:** `http://localhost:5173`
+4. **Authorization callback URL:** `http://localhost:3001/api/auth/github/callback`
+5. Register the application.
+6. Copy the **Client ID**. Click **Generate a new client secret** and copy the secret once.
+
+Do not commit the client secret. Keep it in `.env` only (`.env` is gitignored).
+
+### 2. Set environment variables
+
+```bash
+cp .env.example .env
+```
+
+In `.env`:
+
+```bash
+AUTH_MOCK=false
+GITHUB_CLIENT_ID=your_oauth_app_client_id
+GITHUB_CLIENT_SECRET=your_oauth_app_client_secret
+GITHUB_CALLBACK_URL=http://localhost:3001/api/auth/github/callback
+WEB_ORIGIN=http://localhost:5173
+JWT_SECRET=pick-a-long-random-string
+```
+
+Restart `npm run dev`. Open [http://localhost:5173](http://localhost:5173) and click **Sign in with GitHub**.
+
+On first login the API upserts a player from the GitHub profile (`githubId`, `githubLogin`, name, email, avatar) and creates a character if needed. After that, `/api/me`, quests, shop, boards, and match history work with the session.
+
+### 3. OAuth scopes
+
+| Scope | Why |
+| --- | --- |
+| `read:user` | GitHub id, login, name, avatar |
+| `user:email` | Email when it is not public on the profile (`GET /user/emails`) |
+
+Those two are requested by default. They are enough to identify the player and to attribute **public** commit activity (webhooks on public repos, or the public Events API). No extra user scope is required for public stats.
+
+**Private repositories** are out of scope for the default OAuth app:
+
+- **Preferred:** a [GitHub App](https://docs.github.com/en/apps/creating-github-apps/about-creating-github-apps/about-creating-github-apps) installed on the org/repo, with contents/metadata permissions and a `push` webhook to `POST /api/webhooks/github`. Store the webhook secret in `GITHUB_WEBHOOK_SECRET`. Use an installation token (or `GITHUB_TOKEN`) when the handler needs per-commit line diffs.
+- **Advanced / classic OAuth:** set `GITHUB_REQUEST_REPO_SCOPE=true` so the login prompt also asks for `repo`. That lets the stored user token read private diffs, but it is a broad user-to-server grant — prefer the App.
+
+Optional extra scopes: `GITHUB_OAUTH_SCOPES=read:org` (space or comma separated).
+
+### 4. Webhooks (commit XP)
+
+Point a repo or GitHub App webhook at `http://<host>:3001/api/webhooks/github` (push events). The handler matches `commit.author.username` to `githubLogin` / `login`, filters noise paths, and awards XP. If GitHub does not return file stats, it estimates from added/modified/removed paths.
+
+### Other env vars
 
 | Variable | Purpose |
 | --- | --- |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | OAuth app |
-| `GITHUB_CALLBACK_URL` | Default `http://localhost:3001/api/auth/github/callback` |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | OAuth App credentials |
+| `GITHUB_CALLBACK_URL` | Must match the App callback exactly |
+| `GITHUB_REQUEST_REPO_SCOPE` | `true` to also request `repo` (optional, private) |
+| `GITHUB_OAUTH_SCOPES` | Extra scopes appended to the identity defaults |
 | `GITHUB_WEBHOOK_SECRET` | HMAC for `POST /api/webhooks/github` |
 | `GITHUB_TOKEN` | Optional; used to fetch real per-commit line diffs |
 | `DATABASE_URL` | Postgres |
-| `JWT_SECRET` | Session tokens |
-| `INTERNAL_SECRET` | Colyseus → API |
-| `AUTH_MOCK` | `true` for local play without OAuth |
+| `JWT_SECRET` | Session tokens (web cookie + Colyseus join) |
+| `INTERNAL_SECRET` | Colyseus → API server-to-server |
+| `AUTH_MOCK` | `true` only for local Dev login / `npm run demo` |
 
-Point a GitHub OAuth app at the callback URL and a repo webhook at `http://<host>:3001/api/webhooks/github` (push events). The handler matches `commit.author.username` to a CommitQuest login, filters noise paths, and awards XP. If GitHub does not return file stats, it estimates from added/modified/removed paths.
+### Mock auth (local only)
+
+Set `AUTH_MOCK=true` and restart the API. The login card shows a small **Dev login** link that reveals the mock handle form. `/api/auth/mock` and `/api/commits/simulate` return 403 when mock auth is off.
 
 ## Controls
 
@@ -122,7 +188,7 @@ Point a GitHub OAuth app at the callback URL and a repo webhook at `http://<host
 - Real duo/trio human matchmaking (ratings, parties, ready-check) — bots currently fill the room
 - Dedicated shard / interest management for a large overworld
 - Persistent boss HP across Colyseus room restarts
-- Full GitHub App installation flow and private-repo diff fetching per user token
+- Full GitHub App installation flow and private-repo diff fetching per installation token
 - Animation sets, audio, and authored tiles (everything is generated placeholders)
 - Anti-cheat / webhook replay protection beyond SHA dedupe
 - Mobile controls

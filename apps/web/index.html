@@ -13,18 +13,27 @@
         <p class="eyebrow">COMMITQUEST // BUILD 0.1</p>
         <h1>Level up from real commits.</h1>
         <p class="lede">
-          Shared 2D overworld. WASD to move. Space or click to attack. No character classes — ten
-          stats, all starting at 0.
+          Sign in with GitHub so CommitQuest can use your identity and public commit activity for XP
+          and quests. Shared 2D overworld — WASD to move, Space or click to attack. No classes; ten
+          stats start at 0.
         </p>
-        <form id="mock-form">
+        <a id="github-btn" class="cta" href="/api/auth/github">Sign in with GitHub</a>
+        <p id="github-hint" class="hint">
+          Create a GitHub OAuth App (Homepage <code>http://localhost:5173</code>, Callback
+          <code>http://localhost:3001/api/auth/github/callback</code>) and set
+          <code>GITHUB_CLIENT_ID</code> / <code>GITHUB_CLIENT_SECRET</code> with
+          <code>AUTH_MOCK=false</code>. See the README.
+        </p>
+        <p id="dev-login-wrap" class="dev-login-wrap" hidden>
+          <button type="button" id="dev-login-toggle" class="linkish">Dev login</button>
+        </p>
+        <form id="mock-form" hidden>
           <label>Handle
             <input id="mock-login" maxlength="24" value="octocat" autocomplete="username" />
           </label>
           <button type="submit" id="mock-btn">Play with mock auth</button>
         </form>
-        <a id="github-btn" class="ghost" href="/api/auth/github">Sign in with GitHub</a>
         <p id="login-error" class="error" hidden></p>
-        <p class="hint">Set <code>AUTH_MOCK=true</code> for local play without OAuth.</p>
       </div>
     </div>
 
@@ -82,7 +91,7 @@
           <div id="prompt"></div>
           <div class="actions">
             <button type="button" data-panel="character">Character</button>
-            <button type="button" data-panel="simulate">Simulate commit</button>
+            <button type="button" id="simulate-btn" data-panel="simulate" hidden>Simulate commit</button>
             <button type="button" data-panel="shop">Shop</button>
             <button type="button" data-panel="leaderboard">Leaderboard</button>
             <button type="button" data-panel="matches">Matches</button>

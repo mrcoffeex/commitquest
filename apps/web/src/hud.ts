@@ -28,7 +28,12 @@ export async function refreshHud() {
   const me = await api.me();
   character = me.character;
   const identity = document.getElementById("identity");
-  if (identity) identity.textContent = `${me.user.login} / ${me.character?.displayName ?? "no character"}`;
+  if (identity) {
+    const handle = me.user.githubLogin ?? me.user.login;
+    identity.textContent = `${handle}${me.user.name ? ` · ${me.user.name}` : ""} / ${me.character?.displayName ?? "no character"}`;
+  }
+  const simulateBtn = document.getElementById("simulate-btn");
+  if (simulateBtn) simulateBtn.hidden = !me.authMock;
   if (!me.character) return me;
   const p = me.character.progress;
   const xpFill = document.getElementById("xp-fill");
@@ -126,9 +131,10 @@ export async function openPanel(kind: string) {
       };
     });
   } else if (kind === "simulate") {
+    if (!character) return;
     panel.innerHTML = `
       <h2>Simulate a commit</h2>
-      <p class="muted">+1 XP per line added, −1 per line removed, floor 0. Noise paths are skipped.</p>
+      <p class="muted">Dev-only. +1 XP per line added, −1 per line removed, floor 0. Noise paths are skipped.</p>
       <div class="row"><label>Additions</label><input id="sim-add" type="number" value="40" /></div>
       <div class="row"><label>Deletions</label><input id="sim-del" type="number" value="8" /></div>
       <div class="row"><label>Language</label><input id="sim-lang" value="TypeScript" /></div>

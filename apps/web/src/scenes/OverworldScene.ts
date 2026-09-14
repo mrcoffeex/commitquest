@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { Client, type Room } from "colyseus.js";
 import { LANDMARKS, TILE, WORLD, buildWorldGrid } from "@commitquest/shared";
+import { getToken } from "../api.js";
 import { currentCharacter, refreshHud, setHp, setPrompt, toast } from "../hud.js";
 
 type WorldMsg = { kind?: string; x?: number; y?: number; text?: string; line?: string };
@@ -37,7 +38,7 @@ export class OverworldScene extends Phaser.Scene {
     const ws = import.meta.env.VITE_COLYSEUS_URL ?? "ws://localhost:2567";
     try {
       const client = new Client(ws);
-      this.room = await client.joinOrCreate("world", { characterId });
+      this.room = await client.joinOrCreate("world", { characterId, token: getToken() });
       this.room.state.players.onAdd((player: WorldPlayer, id: string) => this.upsert(id, player, true));
       this.room.state.players.onRemove((_p: WorldPlayer, id: string) => {
         this.sprites.get(id)?.destroy();

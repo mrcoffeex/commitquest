@@ -12,7 +12,7 @@ import {
 } from "@commitquest/shared";
 import { prisma } from "./prisma.js";
 import { env } from "./env.js";
-import { requireAuth, requireInternal, signToken, type AuthedRequest } from "./auth.js";
+import { getTokenFromRequest, requireAuth, requireInternal, signToken, type AuthedRequest } from "./auth.js";
 import {
   allocateStat,
   applyDeath,
@@ -27,11 +27,15 @@ import {
   serializeCharacter,
 } from "./services/progression.js";
 import {
+  createOauthState,
   estimateFilesFromPush,
   exchangeGithubCode,
   fetchCommitDiff,
-  fetchGithubUser,
+  fetchGithubProfile,
+  githubOauthScopeString,
+  sessionCookieOptions,
   verifyGithubSignature,
+  verifyOauthState,
   type PushPayload,
 } from "./github.js";
 
@@ -45,6 +49,7 @@ router.get("/auth/config", (_req, res) => {
   res.json({
     authMock: env.authMock,
     githubEnabled: Boolean(env.githubClientId && env.githubClientSecret),
+    scopes: githubOauthScopeString(),
   });
 });
 
@@ -53,38 +58,64 @@ router.get("/auth/github", (_req, res) => {
     res.status(400).json({ error: "GITHUB_CLIENT_ID is not configured" });
     return;
   }
+  const state = createOauthState(env.jwtSecret);
   const url = new URL("https://github.com/login/oauth/authorize");
   url.searchParams.set("client_id", env.githubClientId);
   url.searchParams.set("redirect_uri", env.githubCallbackUrl);
-  url.searchParams.set("scope", "read:user user:email");
+  url.searchParams.set("scope", githubOauthScopeString());
+  url.searchParams.set("state", state);
   res.redirect(url.toString());
 });
 
 router.get("/auth/github/callback", async (req, res) => {
   try {
     const code = String(req.query.code ?? "");
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    if (!code) {
+      res.status(400).json({ error: "Missing OAuth code" });
+      return;
+    }
+    if (!verifyOauthState(env.jwtSecret, state)) {
+      res.status(400).json({ error: "Invalid OAuth state" });
+      return;
+    }
     const accessToken = await exchangeGithubCode(code);
-    const gh = await fetchGithubUser(accessToken);
+    const profile = await fetchGithubProfile(accessToken);
     const user = await prisma.user.upsert({
-      where: { githubId: String(gh.id) },
-      update: { login: gh.login, email: gh.email, avatarUrl: gh.avatar_url, accessToken },
+      where: { githubId: profile.githubId },
+      update: {
+        login: profile.githubLogin,
+        githubLogin: profile.githubLogin,
+        name: profile.name,
+        email: profile.email,
+        avatarUrl: profile.avatarUrl,
+        accessToken,
+      },
       create: {
-        githubId: String(gh.id),
-        login: gh.login,
-        email: gh.email,
-        avatarUrl: gh.avatar_url,
+        githubId: profile.githubId,
+        githubLogin: profile.githubLogin,
+        login: profile.githubLogin,
+        name: profile.name,
+        email: profile.email,
+        avatarUrl: profile.avatarUrl,
         accessToken,
       },
       include: { character: true },
     });
     let character = user.character;
-    if (!character) character = await createCharacter(user.id, gh.login);
+    if (!character) character = await createCharacter(user.id, profile.name ?? profile.githubLogin);
     const token = signToken({ sub: user.id, login: user.login, characterId: character.id });
-    res.cookie("cq_token", token, { httpOnly: false, sameSite: "lax" });
+    res.cookie("cq_token", token, sessionCookieOptions());
     res.redirect(`${env.webOrigin}/?token=${encodeURIComponent(token)}`);
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "OAuth failed" });
   }
+});
+
+router.post("/auth/session", requireAuth, (req, res) => {
+  const token = getTokenFromRequest(req);
+  if (token) res.cookie("cq_token", token, sessionCookieOptions());
+  res.json({ ok: true });
 });
 
 router.post("/auth/mock", async (req, res) => {
@@ -95,13 +126,14 @@ router.post("/auth/mock", async (req, res) => {
   const login = String(req.body?.login ?? "octocat").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "octocat";
   const user = await prisma.user.upsert({
     where: { githubId: `mock:${login}` },
-    update: { login },
-    create: { githubId: `mock:${login}`, login, avatarUrl: `https://github.com/${login}.png` },
+    update: { login, githubLogin: login },
+    create: { githubId: `mock:${login}`, githubLogin: login, login, avatarUrl: `https://github.com/${login}.png` },
     include: { character: true },
   });
   const character = user.character ?? (await createCharacter(user.id, login));
   const token = signToken({ sub: user.id, login: user.login, characterId: character.id });
-  res.json({ token, user: { id: user.id, login: user.login }, characterId: character.id });
+  res.cookie("cq_token", token, sessionCookieOptions());
+  res.json({ token, user: { id: user.id, login: user.login, githubLogin: user.githubLogin ?? user.login, githubId: user.githubId }, characterId: character.id });
 });
 
 router.get("/me", requireAuth, async (req, res) => {
@@ -115,8 +147,17 @@ router.get("/me", requireAuth, async (req, res) => {
     return;
   }
   res.json({
-    user: { id: user.id, login: user.login, avatarUrl: user.avatarUrl },
+    user: {
+      id: user.id,
+      login: user.login,
+      githubId: user.githubId,
+      githubLogin: user.githubLogin ?? user.login,
+      name: user.name,
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+    },
     character: user.character ? serializeCharacter(user.character) : null,
+    authMock: env.authMock,
     keys: periodKeys(),
   });
 });
@@ -174,6 +215,10 @@ router.post("/character/stats", requireAuth, async (req, res) => {
 });
 
 router.post("/commits/simulate", requireAuth, async (req, res) => {
+  if (!env.authMock) {
+    res.status(403).json({ error: "Simulate commit is admin/dev-only. Set AUTH_MOCK=true for local play." });
+    return;
+  }
   const auth = (req as AuthedRequest).auth;
   const character = await prisma.character.findUnique({ where: { userId: auth.sub } });
   if (!character) {
@@ -210,7 +255,10 @@ router.post("/webhooks/github", async (req, res) => {
     const login = commit.author?.username ?? payload.pusher?.name;
     if (!login) continue;
     const user = await prisma.user.findFirst({
-      where: { login, character: { isNot: null } },
+      where: {
+        OR: [{ githubLogin: login }, { login }],
+        character: { isNot: null },
+      },
       include: { character: true },
     });
     if (!user?.character) continue;
