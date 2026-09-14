@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CommitQuest</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="scanlines"></div>
+    <div id="login">
+      <div class="panel login-card">
+        <p class="eyebrow">COMMITQUEST // BUILD 0.1</p>
+        <h1>Level up from real commits.</h1>
+        <p class="lede">
+          Shared 2D overworld. WASD to move. Space or click to attack. No character classes — ten
+          stats, all starting at 0.
+        </p>
+        <form id="mock-form">
+          <label>Handle
+            <input id="mock-login" maxlength="24" value="octocat" autocomplete="username" />
+          </label>
+          <button type="submit" id="mock-btn">Play with mock auth</button>
+        </form>
+        <a id="github-btn" class="ghost" href="/api/auth/github">Sign in with GitHub</a>
+        <p id="login-error" class="error" hidden></p>
+        <p class="hint">Set <code>AUTH_MOCK=true</code> for local play without OAuth.</p>
+      </div>
+    </div>
+
+    <div id="app" hidden>
+      <div id="game"></div>
+      <div id="hud">
+        <header class="hud-top">
+          <div>
+            <div class="brand">COMMITQUEST</div>
+            <div id="identity" class="muted"></div>
+          </div>
+          <div class="bars">
+            <div class="bar">
+              <span>HP</span>
+              <div class="track"><i id="hp-fill"></i></div>
+              <b id="hp-label">0/0</b>
+            </div>
+            <div class="bar">
+              <span>XP</span>
+              <div class="track xp"><i id="xp-fill"></i></div>
+              <b id="xp-label">0/0</b>
+            </div>
+          </div>
+          <div class="meta">
+            <div>Lv <b id="lvl">1</b></div>
+            <div>Bits <b id="bits">0</b></div>
+            <div>Streak <b id="streak">0</b></div>
+            <button id="focus-btn" type="button">Focus: off</button>
+          </div>
+        </header>
+
+        <aside class="hud-left">
+          <h2>Quests</h2>
+          <div id="quests"></div>
+        </aside>
+
+        <aside class="hud-right">
+          <h2>Hotkeys</h2>
+          <ul class="keys">
+            <li><kbd>WASD</kbd> move</li>
+            <li><kbd>Space</kbd> / click attack</li>
+            <li><kbd>E</kbd> talk / interact</li>
+            <li><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> emotes</li>
+            <li><kbd>C</kbd> character</li>
+            <li><kbd>J</kbd> quest log</li>
+            <li><kbd>K</kbd> shop</li>
+            <li><kbd>L</kbd> boards</li>
+            <li><kbd>M</kbd> matches</li>
+            <li><kbd>Q</kbd> solo duel</li>
+          </ul>
+          <div id="toast"></div>
+        </aside>
+
+        <footer class="hud-bottom">
+          <div id="prompt"></div>
+          <div class="actions">
+            <button type="button" data-panel="character">Character</button>
+            <button type="button" data-panel="simulate">Simulate commit</button>
+            <button type="button" data-panel="shop">Shop</button>
+            <button type="button" data-panel="leaderboard">Leaderboard</button>
+            <button type="button" data-panel="matches">Matches</button>
+            <button type="button" id="duel-btn">Solo duel</button>
+            <button type="button" id="spectate-btn">Spectate</button>
+          </div>
+        </footer>
+      </div>
+
+      <section id="panel" class="panel hidden"></section>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
