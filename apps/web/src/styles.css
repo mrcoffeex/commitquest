@@ -1,0 +1,113 @@
+:root {
+  --bg: #020805;
+  --panel: rgba(2, 18, 10, 0.88);
+  --line: #145c38;
+  --green: #39ff88;
+  --green-dim: #1c8a4c;
+  --amber: #d6ff4a;
+  --danger: #ff4d6d;
+  --text: #d7ffe8;
+  --muted: #6f9d82;
+  font-family: "IBM Plex Mono", "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+button, input { font: inherit; }
+button {
+  background: #062414;
+  color: var(--green);
+  border: 1px solid var(--green-dim);
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+}
+button:hover { background: #0a3a22; }
+.ghost { display: inline-block; margin-top: 0.6rem; color: var(--amber); }
+.hidden, [hidden] { display: none !important; }
+.muted { color: var(--muted); }
+.error { color: var(--danger); }
+.eyebrow { letter-spacing: 0.18em; color: var(--green-dim); font-size: 0.72rem; }
+.lede { color: var(--muted); max-width: 40rem; }
+
+#scanlines {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,0.08) 0 1px, transparent 1px 3px);
+}
+
+#login, #app { position: fixed; inset: 0; }
+#login { display: grid; place-items: center; background: radial-gradient(circle at 20% 20%, #06321c, #020805 55%); }
+.login-card { width: min(36rem, 92vw); padding: 1.6rem; }
+.login-card h1 { margin: 0.2rem 0 0.8rem; color: var(--green); font-weight: 600; }
+.login-card label { display: block; margin: 1rem 0 0.5rem; color: var(--muted); }
+.login-card input {
+  display: block; width: 100%; margin-top: 0.3rem;
+  background: #011108; color: var(--green); border: 1px solid var(--line); padding: 0.5rem;
+}
+.hint { font-size: 0.8rem; color: var(--muted); }
+
+#game { position: absolute; inset: 0; }
+#hud { position: absolute; inset: 0; pointer-events: none; }
+#hud button, #hud input, #panel { pointer-events: auto; }
+
+.hud-top, .hud-bottom, .hud-left, .hud-right {
+  position: absolute;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 0.7rem 0.85rem;
+}
+.hud-top {
+  top: 12px; left: 12px; right: 12px;
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
+  gap: 1rem;
+  align-items: center;
+}
+.brand { color: var(--green); letter-spacing: 0.16em; font-size: 0.85rem; }
+.bars { display: grid; gap: 0.35rem; }
+.bar { display: grid; grid-template-columns: 28px 1fr auto; gap: 0.45rem; align-items: center; font-size: 0.75rem; }
+.track { height: 10px; background: #03150c; border: 1px solid var(--line); }
+.track i { display: block; height: 100%; width: 0; background: var(--danger); }
+.track.xp i { background: var(--green); }
+.meta { display: flex; gap: 0.8rem; align-items: center; font-size: 0.82rem; }
+.hud-left { top: 92px; left: 12px; width: 240px; max-height: calc(100% - 180px); overflow: auto; }
+.hud-right { top: 92px; right: 12px; width: 220px; }
+.hud-left h2, .hud-right h2 { margin: 0 0 0.5rem; font-size: 0.8rem; color: var(--green); letter-spacing: 0.12em; }
+.quest { margin-bottom: 0.55rem; font-size: 0.75rem; }
+.quest b { display: block; color: var(--amber); }
+.keys { margin: 0; padding: 0; list-style: none; font-size: 0.72rem; color: var(--muted); }
+.keys li { margin: 0.25rem 0; }
+kbd { color: var(--green); border: 1px solid var(--line); padding: 0 0.25rem; }
+.hud-bottom {
+  left: 12px; right: 12px; bottom: 12px;
+  display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+}
+.actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+#prompt { color: var(--amber); font-size: 0.85rem; min-height: 1.2em; }
+#toast { margin-top: 0.6rem; color: var(--amber); font-size: 0.75rem; min-height: 2.4em; }
+
+.panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(640px, 92vw);
+  max-height: 74vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--green-dim);
+  padding: 1rem 1.1rem;
+  z-index: 5;
+  box-shadow: 0 0 40px rgba(57, 255, 136, 0.08);
+}
+.panel h2 { margin: 0 0 0.6rem; color: var(--green); }
+.stat-grid, .shop-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; }
+.row { display: flex; justify-content: space-between; gap: 0.6rem; align-items: center; border-bottom: 1px solid #0c2b1c; padding: 0.35rem 0; font-size: 0.82rem; }
+#panel input { background: #011108; color: var(--green); border: 1px solid var(--line); padding: 0.35rem; width: 6rem; }
+
+@media (max-width: 900px) {
+  .hud-left, .hud-right { display: none; }
+  .hud-top { grid-template-columns: 1fr; }
+}

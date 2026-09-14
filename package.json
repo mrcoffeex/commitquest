@@ -1,0 +1,27 @@
+{
+  "name": "commitquest",
+  "private": true,
+  "version": "0.1.0",
+  "description": "2D browser MMO that levels from real GitHub commits",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,game,web -c green,magenta,cyan \"npm run dev -w @commitquest/api\" \"npm run dev -w @commitquest/server\" \"npm run dev -w @commitquest/web\"",
+    "test": "npm run test -w @commitquest/shared",
+    "db:generate": "npm run generate -w @commitquest/api",
+    "db:migrate": "npm run migrate -w @commitquest/api",
+    "db:seed": "npm run seed -w @commitquest/api",
+    "db:reset": "npm run reset -w @commitquest/api",
+    "demo": "bash scripts/demo.sh",
+    "build": "npm run build -w @commitquest/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

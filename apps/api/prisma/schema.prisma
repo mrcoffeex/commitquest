@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String     @id @default(cuid())
+  githubId    String     @unique
+  login       String
+  email       String?
+  avatarUrl   String?
+  accessToken String?
+  createdAt   DateTime   @default(now())
+  character   Character?
+}
+
+model Character {
+  id                String              @id @default(cuid())
+  userId            String              @unique
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName       String
+  color             String              @default("#33ff88")
+  level             Int                 @default(1)
+  totalXp           Int                 @default(0)
+  unspentStatPoints Int                 @default(0)
+  bits              Int                 @default(0)
+  stats             Json
+  cosmetics         Json
+  emotes            Json
+  focusSession      Boolean             @default(false)
+  commitStreak      Int                 @default(0)
+  lastCommitDate    DateTime?
+  languageAffinity  Json
+  kills             Int                 @default(0)
+  deaths            Int                 @default(0)
+  highestDamage     Int                 @default(0)
+  wins              Int                 @default(0)
+  losses            Int                 @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  weapons           Weapon[]
+  commits           CommitEvent[]
+  quests            QuestProgress[]
+  matches           MatchParticipant[]
+  boards            BoardOptIn[]
+  purchases         ShopPurchase[]
+  bossDamage        BossContribution[]
+}
+
+model Weapon {
+  id             String    @id @default(cuid())
+  characterId    String
+  character      Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  name           String
+  grantedAtLevel Int
+  stats          Json
+  effects        Json
+  createdAt      DateTime  @default(now())
+}
+
+model CommitEvent {
+  id                String    @id @default(cuid())
+  characterId       String
+  character         Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  sha               String
+  repo              String?
+  additions         Int
+  deletions         Int
+  filteredAdditions Int
+  filteredDeletions Int
+  xpAwarded         Int
+  language          String?
+  source            String
+  createdAt         DateTime  @default(now())
+
+  @@unique([characterId, sha])
+}
+
+model QuestProgress {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  templateId  String
+  period      String
+  periodKey   String
+  progress    Int       @default(0)
+  completed   Boolean   @default(false)
+  claimed     Boolean   @default(false)
+
+  @@unique([characterId, templateId, periodKey])
+}
+
+model Match {
+  id           String             @id @default(cuid())
+  mode         String
+  winnerSide   Int?
+  startedAt    DateTime           @default(now())
+  endedAt      DateTime?
+  participants MatchParticipant[]
+}
+
+model MatchParticipant {
+  id          String     @id @default(cuid())
+  matchId     String
+  match       Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  characterId String?
+  character   Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  displayName String
+  side        Int
+  isBot       Boolean    @default(false)
+  damageDealt Int        @default(0)
+  won         Boolean    @default(false)
+  xpDelta     Int        @default(0)
+  bitsDelta   Int        @default(0)
+}
+
+model BoardOptIn {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  org         String
+  repo        String?
+
+  @@unique([characterId, org, repo])
+}
+
+model ShopPurchase {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  itemId      String
+  createdAt   DateTime  @default(now())
+}
+
+model BossContribution {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  bossId      String
+  periodKey   String
+  damage      Int       @default(0)
+  rewarded    Boolean   @default(false)
+
+  @@unique([characterId, bossId, periodKey])
+}
