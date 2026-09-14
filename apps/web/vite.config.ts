@@ -6,6 +6,12 @@ export default defineConfig({
     host: true,
     proxy: {
       "/api": "http://localhost:3001",
+      "/colyseus": {
+        target: "http://localhost:2567",
+        changeOrigin: true,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/colyseus/, "") || "/",
+      },
     },
   },
 });

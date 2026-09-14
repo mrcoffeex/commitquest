@@ -1,7 +1,8 @@
 import Phaser from "phaser";
-import { Client, type Room } from "colyseus.js";
+import { getStateCallbacks, type Room } from "colyseus.js";
 import { DUEL } from "@commitquest/shared";
 import { refreshHud, setHp, setPrompt, toast } from "../hud.js";
+import { gameClient } from "../net.js";
 
 type DuelUnit = {
   sessionId: string;
@@ -48,19 +49,45 @@ export class DuelScene extends Phaser.Scene {
     setPrompt("Duel: WASD + Space. Esc returns to the overworld.");
 
     const characterId = this.registry.get("characterId") as string;
-    const ws = import.meta.env.VITE_COLYSEUS_URL ?? "ws://localhost:2567";
-    const client = new Client(ws);
-    this.room = await client.joinOrCreate("duel", { characterId, spectate: Boolean(data.spectate), mode: "solo" });
-    this.room.onMessage("fx", (msg: { x: number; y: number; text: string }) => {
-      const label = this.add.text(msg.x, msg.y, msg.text, { fontSize: "14px", color: "#d6ff4a" }).setOrigin(0.5);
-      this.tweens.add({ targets: label, y: msg.y - 24, alpha: 0, duration: 450, onComplete: () => label.destroy() });
-    });
-    this.room.onMessage("ended", (msg: { winnerSide: number }) => {
-      const mine = this.room?.state.units.get(this.room.sessionId) as DuelUnit | undefined;
-      const won = mine && mine.side === msg.winnerSide;
-      toast(won ? "Victory. XP and Bits inbound." : "Defeat. 5% of current-bar XP lost.");
-      refreshHud().catch(() => undefined);
-    });
+    try {
+      const client = gameClient();
+      this.room = await client.joinOrCreate("duel", { characterId, spectate: Boolean(data.spectate), mode: "solo" });
+      const $ = getStateCallbacks(this.room);
+      $(this.room.state).units.onAdd((unit: DuelUnit, id: string) => {
+        this.paintUnit(id, unit);
+        $(unit).onChange(() => this.paintUnit(id, unit));
+      });
+      this.room.onMessage("fx", (msg: { x: number; y: number; text: string }) => {
+        const label = this.add.text(msg.x, msg.y, msg.text, { fontSize: "14px", color: "#d6ff4a" }).setOrigin(0.5);
+        this.tweens.add({ targets: label, y: msg.y - 24, alpha: 0, duration: 450, onComplete: () => label.destroy() });
+      });
+      this.room.onMessage("ended", (msg: { winnerSide: number }) => {
+        const mine = this.room?.state.units?.get?.(this.room.sessionId) as DuelUnit | undefined;
+        const won = mine && mine.side === msg.winnerSide;
+        toast(won ? "Victory. XP and Bits inbound." : "Defeat. 5% of current-bar XP lost.");
+        refreshHud().catch(() => undefined);
+      });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Duel room unavailable");
+      setPrompt("Could not join a duel room. Esc to return.");
+    }
+  }
+
+  paintUnit(id: string, unit: DuelUnit) {
+    if (unit.spectator) return;
+    let sprite = this.sprites.get(id);
+    if (!sprite) {
+      const body = this.add.image(0, 0, "hero").setTint(Phaser.Display.Color.HexStringToColor(unit.color || "#33ff88").color);
+      const label = this.add.text(0, -28, unit.name, { fontSize: "11px", color: "#9affc4" }).setOrigin(0.5);
+      sprite = this.add.container(unit.x, unit.y, [body, label]);
+      this.sprites.set(id, sprite);
+    }
+    sprite.x = unit.x;
+    sprite.y = unit.y;
+    sprite.setAlpha(unit.alive ? 1 : 0.3);
+    (sprite.getAt(1) as Phaser.GameObjects.Text).setText(
+      `${unit.name}${unit.isBot ? " [BOT]" : ""} ${Math.ceil(unit.hp)}`,
+    );
   }
 
   update() {
@@ -71,25 +98,9 @@ export class DuelScene extends Phaser.Scene {
       left: this.cursors.left.isDown || this.wasd.A.isDown,
       right: this.cursors.right.isDown || this.wasd.D.isDown,
     });
-    this.room.state.units.forEach((unit: DuelUnit, id: string) => {
-      if (unit.spectator) return;
-      let sprite = this.sprites.get(id);
-      if (!sprite) {
-        const body = this.add.image(0, 0, "hero").setTint(Phaser.Display.Color.HexStringToColor(unit.color || "#33ff88").color);
-        const label = this.add.text(0, -28, unit.name, { fontSize: "11px", color: "#9affc4" }).setOrigin(0.5);
-        sprite = this.add.container(unit.x, unit.y, [body, label]);
-        this.sprites.set(id, sprite);
-      }
-      sprite.x = unit.x;
-      sprite.y = unit.y;
-      sprite.setAlpha(unit.alive ? 1 : 0.3);
-      (sprite.getAt(1) as Phaser.GameObjects.Text).setText(
-        `${unit.name}${unit.isBot ? " [BOT]" : ""} ${Math.ceil(unit.hp)}`,
-      );
-    });
-    const mine = this.room.state.units.get(this.room.sessionId) as DuelUnit | undefined;
+    const mine = this.room.state.units?.get?.(this.room.sessionId) as DuelUnit | undefined;
     if (mine) setHp(mine.hp, mine.maxHp);
-    setPrompt(`Phase ${this.room.state.phase} · ${this.room.state.lastEmote || "1/2/3 emotes"}`);
+    setPrompt(`Phase ${this.room.state.phase ?? "…"} · ${this.room.state.lastEmote || "1/2/3 emotes"}`);
   }
 
   leave() {
